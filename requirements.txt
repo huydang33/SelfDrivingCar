@@ -1,0 +1,9 @@
+tqdm
+kagglehub
+opencv-python
+matplotlib
+numpy
+pandas
+torch
+torchvision
+onnx
