@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-# from livelossplot import PlotLosses
-# from livelossplot.outputs import MatplotlibPlot
+from livelossplot import PlotLosses
+from livelossplot.outputs import MatplotlibPlot
 from tqdm import tqdm
 import os
 
@@ -87,70 +87,54 @@ def valid_one_epoch(valid_dataloader, model, loss):
     return valid_loss
 
 
-def optimize(data_loaders, model, optimizer, loss, n_epochs, save_path):
-    # # Initialize tracker for minimum validation loss
-    # if interactive_tracking:
-    #     liveloss = PlotLosses(outputs=[MatplotlibPlot(after_subplot=after_subplot)])
-    # else:
-    #     liveloss = None
-
-    valid_loss_min = None
+def optimize(data_loaders, model, optimizer, loss_fn, n_epochs, save_path, resume=False):
+    start_epoch = 1
+    valid_loss_min = None    
     trigger_times = 0
-    patience = 5
-    logs = {}
+    patience = 5  # Early stopping patience
 
-    # Setup a learning rate scheduler that
-    # reduces the learning rate when the validation loss reaches a
-    # plateau
-    scheduler  = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+    liveloss = PlotLosses()
 
-    for epoch in range(1, n_epochs + 1):
+    # Resume từ checkpoint nếu có
+    if resume and os.path.exists(save_path):
+        print("🔄 Resuming from checkpoint:", save_path)
+        checkpoint = torch.load(save_path, map_location='cuda' if torch.cuda.is_available() else 'cpu')
+        model.load_state_dict(checkpoint)
+        start_epoch = 7
+    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
-        train_loss = train_one_epoch(
-            data_loaders["train"], model, optimizer, loss
-        )
+    for epoch in range(start_epoch, n_epochs + 1):
+        train_loss = train_one_epoch(data_loaders["train"], model, optimizer, loss_fn)
+        valid_loss = valid_one_epoch(data_loaders["valid"], model, loss_fn)
 
-        valid_loss = valid_one_epoch(data_loaders["valid"], model, loss)
+        logs = {
+            'log loss': train_loss,
+            'val_log loss': valid_loss,
+        }
+        liveloss.update(logs)
+        liveloss.send()
 
-        # print training/validation statistics
-        print(
-            "Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f}".format(
-                epoch, train_loss, valid_loss
-            )
-        )
+        print(f"Epoch: {epoch} \tTraining Loss: {train_loss:.6f} \tValidation Loss: {valid_loss:.6f}")
 
-        # If the validation loss decreases by more than 1%, save the model
-        if valid_loss_min is None or (
-                (valid_loss_min - valid_loss) / valid_loss_min > 0.01
-        ):
-            print(f"New minimum validation loss: {valid_loss:.6f}. Saving model ...")
-            
-            # Create folder if it doesn't exist
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-            # Save the weights to save_path
-            torch.save(model.state_dict(), save_path)
-
+        if valid_loss_min is None or ((valid_loss_min - valid_loss) / valid_loss_min > 0.01):
+            print(f"✅ New minimum validation loss: {valid_loss:.6f}. Saving model ...")
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "valid_loss_min": valid_loss
+            }, save_path)
             valid_loss_min = valid_loss
             trigger_times = 0
         else:
             trigger_times += 1
-            print(f"No improvement in validation loss. Early stopping counter: {trigger_times}/{patience}")
+            print(f"⚠️ No improvement. Trigger count: {trigger_times}/{patience}")
             if trigger_times >= patience:
-                print("Early stopping triggered. Stopping training.")
+                print("🛑 Early stopping triggered.")
                 break
 
-        # Update learning rate, i.e., make a step in the learning rate scheduler
         scheduler.step(valid_loss)
-
-        # Log the losses and the current learning rate
-        # if interactive_tracking:
-        #     logs["loss"] = train_loss
-        #     logs["val_loss"] = valid_loss
-        #     logs["lr"] = optimizer.param_groups[0]["lr"]
-
-        #     liveloss.update(logs)
-        #     liveloss.send()
 
 
 def one_epoch_test(test_dataloader, model, loss):

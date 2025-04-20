@@ -10,6 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Argument for line detection")
     # Add arguments
     parser.add_argument("--train", type=bool, help="Training model", default=False)
+    parser.add_argument("--resume", type=bool, help="Resume training", default=False)
     parser.add_argument("--infer", type=bool, help="Inference model", default=False)
 
     return parser.parse_args()
@@ -49,7 +50,8 @@ def main():
             optimizer,
             loss,
             n_epochs=num_epochs,
-            save_path="checkpoints/best_val_loss.pt"
+            save_path="checkpoints/best_val_loss.pt",
+            resume=args.resume
         )
 
     elif args.infer:
