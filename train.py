@@ -1,10 +1,9 @@
-import tempfile
-
 import torch
 import numpy as np
 # from livelossplot import PlotLosses
 # from livelossplot.outputs import MatplotlibPlot
 from tqdm import tqdm
+import os
 
 
 def train_one_epoch(train_dataloader, model, optimizer, loss):
@@ -96,6 +95,8 @@ def optimize(data_loaders, model, optimizer, loss, n_epochs, save_path):
     #     liveloss = None
 
     valid_loss_min = None
+    trigger_times = 0
+    patience = 5
     logs = {}
 
     # Setup a learning rate scheduler that
@@ -123,12 +124,21 @@ def optimize(data_loaders, model, optimizer, loss, n_epochs, save_path):
                 (valid_loss_min - valid_loss) / valid_loss_min > 0.01
         ):
             print(f"New minimum validation loss: {valid_loss:.6f}. Saving model ...")
+            
+            # Create folder if it doesn't exist
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
             # Save the weights to save_path
             torch.save(model.state_dict(), save_path)
 
             valid_loss_min = valid_loss
             trigger_times = 0
+        else:
+            trigger_times += 1
+            print(f"No improvement in validation loss. Early stopping counter: {trigger_times}/{patience}")
+            if trigger_times >= patience:
+                print("Early stopping triggered. Stopping training.")
+                break
 
         # Update learning rate, i.e., make a step in the learning rate scheduler
         scheduler.step(valid_loss)
