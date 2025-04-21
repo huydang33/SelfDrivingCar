@@ -97,11 +97,20 @@ def optimize(data_loaders, model, optimizer, loss_fn, n_epochs, save_path, resum
 
     # Resume từ checkpoint nếu có
     if resume and os.path.exists(save_path):
-        print("🔄 Resuming from checkpoint:", save_path)
-        checkpoint = torch.load(save_path, map_location='cuda' if torch.cuda.is_available() else 'cpu')
-        model.load_state_dict(checkpoint)
-        start_epoch = 7
-    
+        print(f"🔄 Resuming from checkpoint: {save_path}")
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        checkpoint = torch.load(save_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        valid_loss_min = checkpoint.get('valid_loss_min', None)
+        print(f"▶️ Resumed at epoch {start_epoch}, best val loss: {valid_loss_min:.6f}" if valid_loss_min else f"▶️ Resumed at epoch {start_epoch}")
+
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
+
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
     for epoch in range(start_epoch, n_epochs + 1):
@@ -117,6 +126,7 @@ def optimize(data_loaders, model, optimizer, loss_fn, n_epochs, save_path, resum
 
         print(f"Epoch: {epoch} \tTraining Loss: {train_loss:.6f} \tValidation Loss: {valid_loss:.6f}")
 
+        # Check for improvement
         if valid_loss_min is None or ((valid_loss_min - valid_loss) / valid_loss_min > 0.01):
             print(f"✅ New minimum validation loss: {valid_loss:.6f}. Saving model ...")
             torch.save({

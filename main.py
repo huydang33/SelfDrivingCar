@@ -1,10 +1,10 @@
 import argparse
 import torch
-from dataset import get_data_loaders, visualize_sample_from_loader
+from dataset import get_data_loaders
 from Line_Detection import LaneSegmentationModel
 from train import optimize, one_epoch_test
 from optimization import get_optimizer, get_loss
-
+import os
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Argument for line detection")
@@ -12,6 +12,9 @@ def parse_args():
     parser.add_argument("--train", type=bool, help="Training model", default=False)
     parser.add_argument("--resume", type=bool, help="Resume training", default=False)
     parser.add_argument("--infer", type=bool, help="Inference model", default=False)
+    parser.add_argument("--batch_size", type=int, help="Batch size", default=False)
+    parser.add_argument("--kaggle", type=bool, help="using kaggle", default=False)
+    parser.add_argument("--data_dir", type=str, help="data_dir", default="data/")
 
     return parser.parse_args()
 
@@ -23,7 +26,7 @@ def main():
 
     if args.train:
         # Hyperparameters for training
-        batch_size = 128
+        batch_size = args.batch_size if args.batch_size else 16  # Default batch size
         valid_size = 0.2
         num_epochs = 80
         opt = 'adamw'
@@ -35,7 +38,15 @@ def main():
         model = LaneSegmentationModel(num_classes=num_classes, dropout=dropout)
 
         # Get dataloaders
-        data_loaders = get_data_loaders(batch_size=batch_size, valid_size=valid_size)
+        if args.kaggle:
+            import kagglehub
+            culane_root = kagglehub.dataset_download('manideep1108/culane')
+        else:
+            culane_root = args.data_dir
+            # check if the path exists
+            if not os.path.exists(culane_root):
+                raise FileNotFoundError(f"Data directory {culane_root} does not exist.")
+        data_loaders = get_data_loaders(culane_root, batch_size=batch_size, valid_size=valid_size)
         # visualize_sample_from_loader(data_loaders["train"], num_samples=3)
 
         # Optimizer and loss

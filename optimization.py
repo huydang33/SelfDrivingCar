@@ -1,14 +1,32 @@
 import torch
 import torch.nn as nn
 import torch.optim
+import torch.nn.functional as F
 
+
+def dice_loss(pred, target, smooth=1.0):
+    pred = torch.sigmoid(pred)
+    pred = pred.view(-1)
+    target = target.view(-1)
+    intersection = (pred * target).sum()
+    return 1 - ((2. * intersection + smooth) / (pred.sum() + target.sum() + smooth))
+
+class CombinedLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.ce = torch.nn.CrossEntropyLoss()
+
+    def forward(self, pred, target):
+        ce = self.ce(pred, target)
+        dice = dice_loss(pred[:,1], target.float())  # dùng lớp lane (giả sử label 1 là lane)
+        return ce + dice
 
 def get_loss():
     """
     Get an instance of the CrossEntropyLoss (useful for classification),
     optionally moving it to the GPU if use_cuda is set to True
     """
-    loss  = nn.CrossEntropyLoss()
+    loss  = CombinedLoss()
 
     return loss
 
